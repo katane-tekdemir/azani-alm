@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { AZANI_SYSTEM_PROMPT } from "../constants";
 
@@ -6,12 +7,13 @@ const ai = new GoogleGenAI({ apiKey });
 
 export const generateTextResponse = async (history: { role: string; parts: { text: string }[] }[], newMessage: string, image?: string) => {
   try {
-    const parts: any[] = [{ text: newMessage }];
+    // Mevcut mesajı formatla
+    const currentParts: any[] = [{ text: newMessage }];
     
     if (image) {
       const base64Data = image.split(',')[1];
       const mimeType = image.split(';')[0].split(':')[1];
-      parts.unshift({
+      currentParts.unshift({
         inlineData: {
           mimeType: mimeType,
           data: base64Data
@@ -19,22 +21,28 @@ export const generateTextResponse = async (history: { role: string; parts: { tex
       });
     }
 
-    // Görüntü varsa image model, yoksa 2.5 flash (veya pro)
-    // Kodlama veya karmaşık mantık için Thinking Config kullanıyoruz (Gemini 2.5 özelliği)
+    // Geçmişi (History) ve yeni mesajı birleştir
+    // Not: History içinde sistem mesajı veya hatalı format varsa temizle
+    const validHistory = history.filter(h => h.role === 'user' || h.role === 'model').map(h => ({
+        role: h.role,
+        parts: h.parts
+    }));
+
+    const allContents = [
+        ...validHistory,
+        { role: 'user', parts: currentParts }
+    ];
+
+    // Görüntü varsa image model, yoksa 2.5 flash
     const modelId = image ? 'gemini-2.5-flash-image' : 'gemini-2.5-flash';
 
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: {
-        role: 'user',
-        parts: parts
-      },
+      contents: allContents, // Artık tüm sohbet geçmişini gönderiyoruz
       config: {
         systemInstruction: AZANI_SYSTEM_PROMPT,
-        // Düşünme bütçesi (Thinking Budget) modelin daha mantıklı olmasını sağlar.
-        // Sadece 2.5 serisi modellerde (text-only modunda daha etkili) kullanılabilir.
         thinkingConfig: !image ? { thinkingBudget: 1024 } : undefined,
-        temperature: 0.7, // Biraz yaratıcılık ama mantıktan kopmadan
+        temperature: 0.8, // Daha doğal tepkiler için biraz artırdık
       }
     });
 
